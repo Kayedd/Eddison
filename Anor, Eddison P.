@@ -1,0 +1,365 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+
+class ProductInventoryManager
+{
+    private const string SlipperMaterials = "ProductStocksLevel.txt";
+    private const string SalesLog = "SalesLog.txt";
+
+    public ProductInventoryManager()
+    {
+        EnsureFileExists(SlipperMaterials);
+        EnsureFileExists(SalesLog);
+    }
+
+    private void EnsureFileExists(string filePath)
+    {
+        if (!File.Exists(filePath))
+        {
+            File.Create(filePath).Close(); // Create and close the file
+        }
+    }
+
+    private List<string> ReadFileLines(string filePath)
+    {
+        try
+        {
+            return File.ReadAllLines(filePath).ToList();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error reading file {filePath}: {ex.Message}");
+            return new List<string>();
+        }
+    }
+
+    private void WriteFileLines(string filePath, List<string> lines)
+    {
+        try
+        {
+            File.WriteAllLines(filePath, lines);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error writing to file {filePath}: {ex.Message}");
+        }
+    }
+
+    public void AddProductCategory(string productId, string productName, int quantity, decimal unitPrice)
+    {
+        try
+        {
+            using (StreamWriter sw = new StreamWriter(SlipperMaterials, append: true))
+            {
+                sw.WriteLine($"{productId};{productName};{quantity};{unitPrice}");
+            }
+            Console.WriteLine("Product stocks added successfully.");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error adding product: {ex.Message}");
+        }
+    }
+
+    public void DisplayInventory()
+    {
+        var lines = ReadFileLines(SlipperMaterials);
+
+        if (lines.Count == 0)
+        {
+            Console.WriteLine("Warehouse stock is empty.");
+            return;
+        }
+
+        Console.WriteLine("Current Warehouse Stocks:");
+        Console.WriteLine("+----------------------+------------------------+----------------+----------------------+-------------------+");
+        Console.WriteLine(" Product ID                    Name                 Quantity      Unit Price                 Total Value     ");
+        Console.WriteLine("+----------------------+------------------------+----------------+----------------------+-------------------+");
+
+        foreach (string line in lines)
+        {
+            string[] parts = line.Split(';');
+            if (parts.Length != 4)
+            {
+                Console.WriteLine($"Skipping malformed line: {line}");
+                continue;
+            }
+
+            try
+            {
+                int quantity = int.Parse(parts[2]);
+                decimal unitPrice = decimal.Parse(parts[3]);
+                decimal totalValue = quantity * unitPrice;
+
+                Console.WriteLine($" {parts[0],-20}     {parts[1],-20}      {quantity,-10}      {unitPrice,-11:N2}            {totalValue,-11:N2} ");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error processing line '{line}': {ex.Message}");
+            }
+        }
+
+        Console.WriteLine("+----------------------+------------------------+---------------+-----------------------+-------------------+");
+    }
+
+    public void UpdateMaterialQuantity(string productId, int newQuantity)
+    {
+        var lines = ReadFileLines(SlipperMaterials);
+        bool found = false;
+
+        for (int i = 0; i < lines.Count; i++)
+        {
+            string[] parts = lines[i].Split(';');
+            if (parts.Length != 4) continue;
+
+            if (parts[0] == productId)
+            {
+                lines[i] = $"{parts[0]};{parts[1]};{newQuantity};{parts[3]}";
+                found = true;
+                break;
+            }
+        }
+
+        if (found)
+        {
+            WriteFileLines(SlipperMaterials, lines);
+            Console.WriteLine("Product quantity updated successfully.");
+        }
+        else
+        {
+            Console.WriteLine("Product stocks not found.");
+        }
+    }
+
+    public void DeleteSlipper(string productId)
+    {
+        var lines = ReadFileLines(SlipperMaterials);
+        bool found = false;
+
+        for (int i = 0; i < lines.Count; i++)
+        {
+            string[] parts = lines[i].Split(';');
+            if (parts.Length != 4) continue;
+
+            if (parts[0] == productId)
+            {
+                lines.RemoveAt(i);
+                found = true;
+                break;
+            }
+        }
+
+        if (found)
+        {
+            WriteFileLines(SlipperMaterials, lines);
+            Console.WriteLine("Product stocks deleted successfully.");
+        }
+        else
+        {
+            Console.WriteLine("Product stocks not found.");
+        }
+    }
+
+    public void RecordSale(string productId, int quantitySold)
+    {
+        var lines = ReadFileLines(SlipperMaterials);
+        bool found = false;
+
+        for (int i = 0; i < lines.Count; i++)
+        {
+            string[] parts = lines[i].Split(';');
+            if (parts.Length != 4) continue;
+
+            if (parts[0] == productId)
+            {
+                int currentQuantity = int.Parse(parts[2]);
+                decimal unitPrice = decimal.Parse(parts[3]);
+
+                if (currentQuantity < quantitySold)
+                {
+                    Console.WriteLine("Insufficient stock to complete the sale.");
+                    return;
+                }
+
+                lines[i] = $"{parts[0]};{parts[1]};{currentQuantity - quantitySold};{parts[3]}";
+                found = true;
+
+                try
+                {
+                    using (StreamWriter sw = new StreamWriter(SalesLog, append: true))
+                    {
+                        decimal totalSale = quantitySold * unitPrice;
+                        sw.WriteLine($"{DateTime.Now:yyyy-MM-dd};{productId};{parts[1]};{quantitySold};{unitPrice};{totalSale}");
+                    }
+                    Console.WriteLine("Sale recorded successfully.");
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Error recording sale: {ex.Message}");
+                }
+                break;
+            }
+        }
+
+        if (found)
+        {
+            WriteFileLines(SlipperMaterials, lines);
+        }
+        else
+        {
+            Console.WriteLine("Product not found in inventory.");
+        }
+    }
+
+
+
+public void GenerateSalesReport(string period)
+    {
+        if (!File.Exists(SalesLog))
+        {
+            Console.WriteLine("No sales records found.");
+            return;
+        }
+
+        DateTime now = DateTime.Now;
+        DateTime periodStart;
+
+        if (period == "weekly")
+        {
+            periodStart = now.AddDays(-7);
+        }
+        else if (period == "monthly")
+        {
+            periodStart = now.AddMonths(-1);
+        }
+        else
+        {
+            Console.WriteLine("Invalid period specified. Use 'weekly' or 'monthly'.");
+            return;
+        }
+
+        string[] salesLines = File.ReadAllLines(SalesLog);
+        var filteredSales = salesLines
+            .Select(line =>
+            {
+                var parts = line.Split(';');
+                return new
+                {
+                    Date = DateTime.Parse(parts[0]),
+                    ProductId = parts[1],
+                    ProductName = parts[2],
+                    Quantity = int.Parse(parts[3]),
+                    UnitPrice = decimal.Parse(parts[4]),
+                    TotalSale = decimal.Parse(parts[5])
+                };
+            })
+            .Where(sale => sale.Date >= periodStart)
+            .ToList();
+
+        if (filteredSales.Count == 0)
+        {
+            Console.WriteLine($"No sales data available for the {period} period.");
+            return;
+        }
+
+        Console.WriteLine($"\n{period.ToUpper()} Sales Report:");
+        Console.WriteLine("+----------------------+----------------------+------------+-------------+-------------+");
+        Console.WriteLine("| Product ID           | Name                 | Quantity   | Unit Price  | Total Sale  |");
+        Console.WriteLine("+----------------------+----------------------+------------+-------------+-------------+");
+
+        decimal totalRevenue = 0;
+        foreach (var sale in filteredSales)
+        {
+            totalRevenue += sale.TotalSale;
+            Console.WriteLine($"| {sale.ProductId,-20} | {sale.ProductName,-20} | {sale.Quantity,-10} | {sale.UnitPrice,-11} | {sale.TotalSale,-11} |");
+        }
+
+        Console.WriteLine("+----------------------+----------------------+------------+-------------+-------------+");
+        Console.WriteLine($"Total Revenue: {totalRevenue:C}");
+    }
+
+    static void Main(string[] args)
+    {
+        var manager = new ProductInventoryManager();
+
+        while (true)
+        {
+            Console.WriteLine("\nFrom threads to Sole: Inventory Management for Local Slippers:");
+            Console.WriteLine("1. Add Stocks");
+            Console.WriteLine("2. Display Inventory");
+            Console.WriteLine("3. Update Stock Quantity");
+            Console.WriteLine("4. Delete Product");
+            Console.WriteLine("5. Record Sale");
+            Console.WriteLine("6. Generate Weekly Sales Report");
+            Console.WriteLine("7. Generate Monthly Sales Report");
+            Console.WriteLine("8. Exit");
+            Console.Write("Select an option: ");
+
+            int choice = int.Parse(Console.ReadLine());
+
+            switch (choice)
+            {
+                case 1:
+                    Console.Write("Enter Product ID: ");
+                    string id = Console.ReadLine();
+                    Console.Write("Enter Product Name: ");
+                    string name = Console.ReadLine();
+                    Console.Write("Enter Quantity: ");
+                    int quantity = int.Parse(Console.ReadLine());
+                    Console.Write("Enter Unit Price: ");
+                    decimal price = decimal.Parse(Console.ReadLine());
+                    manager.AddProductCategory(id, name, quantity, price);
+                    break;
+
+                case 2:
+                    manager.DisplayInventory();
+                    break;
+
+                case 3:
+                    Console.Write("Enter Product ID to update: ");
+                    string updateId = Console.ReadLine();
+                    Console.Write("Enter new Quantity: ");
+                    int newQuantity = int.Parse(Console.ReadLine());
+                    manager.UpdateMaterialQuantity(updateId, newQuantity);
+                    break;
+
+                case 4:
+                    Console.Write("Enter Product ID to delete: ");
+                    string deleteId = Console.ReadLine();
+                    manager.DeleteSlipper(deleteId);
+                    break;
+
+                case 5:
+                    Console.Write("Enter Product ID for sale: ");
+                    string saleId = Console.ReadLine();
+                    Console.Write("Enter Quantity Sold: ");
+                    int quantitySold = int.Parse(Console.ReadLine());
+                    manager.RecordSale(saleId, quantitySold);
+                    break;
+
+                case 6:
+                    manager.GenerateSalesReport("weekly");
+                    break;
+
+                case 7:
+                    manager.GenerateSalesReport("monthly");
+                    break;
+
+                case 8:
+                    Console.WriteLine("Exiting program.");
+                    return;
+
+                default:
+                    Console.WriteLine("Invalid option. Try again.");
+                    break;
+            }
+        }
+    }
+
+    public void Method()
+    {
+        throw new System.NotImplementedException();
+    }
+}
